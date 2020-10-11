@@ -1,0 +1,123 @@
+/*
+ * passivectr.c
+ *
+ *  Created on: 2020. 8. 27.
+ *      Author: User
+ */
+
+
+
+
+
+#include "gpio.h"
+#include "tim.h"
+#include "usart.h"
+
+
+
+uint8_t rx_data2;//passive control data
+
+
+
+
+
+
+
+float foward(void){//w
+
+
+	//앞바퀴시작
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,7000-1);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,7000-1);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0);
+
+
+
+}
+
+float stop(void){//s
+
+	//앞바퀴시작
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+
+	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+
+
+}
+
+
+float right(void){//r
+
+	//앞바퀴시작
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,0);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,9000-1);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0);
+
+
+
+
+}
+float left(void){//l
+
+	//앞바퀴시작
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,9000-1);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,0);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0);
+
+
+
+
+
+}
+
+float back(void){//b
+
+	//앞바퀴시작
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+
+
+	/***************************주행코드**********************************************/
+
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,0);
+	__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,7000-1);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,0);
+	__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,7000-1);
+
+	/*******************************************************************************/
+
+
+
+}
+
+
