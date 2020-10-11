@@ -1,0 +1,876 @@
+/* USER CODE BEGIN Header */
+/**
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
+ * All rights reserved.</center></h2>
+ *
+ * This software component is licensed by ST under BSD 3-Clause license,
+ * the "License"; You may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at:
+ *                        opensource.org/licenses/BSD-3-Clause
+ *
+ ******************************************************************************
+ */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "adc.h"
+#include "dma.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+#define W 1
+#define S 0
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+uint32_t enc_counter_L = 0;
+uint32_t enc_counter_L0;
+uint32_t enc_counter_R= 0;
+uint32_t enc_counter_R0;
+uint32_t encoder_val;
+uint32_t encoder_ang;
+
+uint8_t Direction_L = 0;
+uint8_t Direction_R = 0;
+uint8_t Pinstat;
+double distance_enc;//엔코더거리값
+double angle[3];
+double cal;
+double radian = 0.0174533;
+
+uint32_t local_time, sensor_time;
+uint32_t distance;//ultrasonic 거리값
+
+uint8_t rx_data[10]; //imu data
+uint8_t rx_data2;//passive control data
+
+
+
+float Roll,Pitch,Yaw;
+signed short EulerRoll,EulerPitch,EulerYaw;
+float rr;// imusensor roll값
+float yy;//Yaw값
+float saveyy;// yaw값 저장
+float duty = 1440 ;//compare function duty값 1400 ~2200
+float ysy;// yy-270
+
+
+int automaticFlg = 0;//flag data
+int i;
+int j;
+int t;
+
+uint16_t adcVal[2];//IR센서 값
+uint16_t IRdistance_CH1;
+uint16_t IRdistance_CH2;
+uint8_t a = 0;
+
+float location[2];
+float X;
+float Y;
+float saveX;
+float saveY;
+/*pid var*/
+#define   Kp  300 // 500
+#define   Ki    0.5 // 0.5
+#define   Kd    8 // 8
+#define   dt    0.1 //
+float P_Yaw,I_Yaw,D_Yaw;
+float error_Yaw, error_prev_Yaw,error_sum;
+float PID_Yaw;
+float savepid;
+float aim_Yaw;
+float R_Speed;
+float L_Speed;
+
+/*pid var*/
+
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_NVIC_Init(void);
+/* USER CODE BEGIN PFP */
+int _write(int file, char* p, int len)
+{
+	HAL_UART_Transmit(&huart2, p, len, 10);
+	return len;
+}
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+/**********************좌표 저장 함수 시작***********************/
+uint32_t XY(void){
+
+	X = X+((location[1])*cos(cal*radian));
+	Y = Y+((location[1])*sin(cal*radian));
+	return X,Y;
+}
+
+/**********************좌표 저장 함수 끝***********************/
+
+
+
+/* USER CODE END 0 */
+
+/**
+ * @brief  The application entry point.
+ * @retval int
+ */
+int main(void)
+{
+	/* USER CODE BEGIN 1 */
+	int flg = 1;
+	i = 0;
+
+	/* USER CODE END 1 */
+
+
+	/* MCU Configuration--------------------------------------------------------*/
+
+	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+	HAL_Init();
+
+	/* USER CODE BEGIN Init */
+	//	reset_code();
+
+	/* USER CODE END Init */
+
+	/* Configure the system clock */
+	SystemClock_Config();
+
+	/* USER CODE BEGIN SysInit */
+
+	/* USER CODE END SysInit */
+
+	/* Initialize all configured peripherals */
+	MX_GPIO_Init();
+	MX_DMA_Init();
+	MX_TIM3_Init();
+	MX_TIM4_Init();
+	MX_TIM6_Init();
+	MX_USART1_UART_Init();
+	MX_ADC1_Init();
+	MX_TIM1_Init();
+	MX_USART2_UART_Init();
+	MX_TIM2_Init();
+	MX_TIM8_Init();
+	MX_TIM9_Init();
+
+	/* Initialize interrupts */
+	MX_NVIC_Init();
+	/* USER CODE BEGIN 2 */
+
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcVal[0], 2);//adc 채널1 dma 시작
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcVal[1], 2);//adc 채널2 dma 시작
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);//servo pwm start
+	/**********************IR센서 함수 시작***********************/
+	uint32_t IRsensor_CH1 (uint32_t a){//전방감지용
+
+		IRdistance_CH1= (9600/(a-20)-6);
+		//		IRdistance_CH1= ((9600/(a-20))-11)/4;
+
+		return IRdistance_CH1;
+	}
+
+	uint32_t IRsensor_CH2 (uint32_t b){//낭떠러지 감지용
+
+		IRdistance_CH2= (9600/(b-20)-6);
+		//		IRdistance_CH2= (9600/(a-10));
+		//		IRdistance_CH2= ((9600/(a-20))-11)/4;
+		//		IRdistance_CH2= (9600/(a-20)-6)/30;
+		return IRdistance_CH2;
+	}
+
+	/**********************IR센서 함수 끝***********************/
+
+
+	HAL_UART_Receive_IT(&huart1,&rx_data,10);//IMU센서 UART
+	HAL_UART_Receive_IT(&huart2,&rx_data2, 1);//수동제어 UART
+	//	delay_f();//3초 딜레이.
+	delay_1s();
+
+	HAL_TIM_Encoder_Start(&htim8, TIM_CHANNEL_ALL);  // Encoder 기능 시작
+	HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);  // Encoder 기능 시작
+	//	__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+	//	//앞바퀴시작
+	//	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+	//	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+	//
+	//	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+	//	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+
+
+	/**********************초음파센서 함수 시작***********************/
+	HAL_TIM_Base_Start(&htim6);//딜레이 함수용
+
+	void delay (uint32_t us)
+	{
+		__HAL_TIM_SET_COUNTER(&htim6, 0);
+		while ((__HAL_TIM_GET_COUNTER(&htim6))<us);
+	}
+
+
+	/************** PIN DEFINITION **************/
+#define Trig_Pin  GPIO_PIN_11
+#define Trig_Port GPIOA
+#define Echo_Pin  GPIO_PIN_12
+#define Echo_Port GPIOA
+
+
+	uint32_t hcsr04_read (void)
+	{
+		local_time=0;
+		HAL_GPIO_WritePin(Trig_Port, Trig_Pin, GPIO_PIN_RESET);  // pull the TRIG pin HIGH
+		delay(2);  // wait for 2 us
+
+
+		HAL_GPIO_WritePin(Trig_Port, Trig_Pin, GPIO_PIN_SET);  // pull the TRIG pin HIGH
+		delay(10);  // wait for 10 us
+		HAL_GPIO_WritePin(Trig_Port, Trig_Pin, GPIO_PIN_RESET);  // pull the TRIG pin low
+
+		// read the time for which the pin is high
+
+		while (!(HAL_GPIO_ReadPin(Echo_Port, Echo_Pin)));  // wait for the ECHO pin to go high
+		while (HAL_GPIO_ReadPin(Echo_Port, Echo_Pin))    // while the pin is high
+		{
+			local_time++;   // measure time for which the pin is high
+			delay (1);
+		}
+		return local_time;
+	}
+
+	uint32_t distancefunction (void){//초음파센서 거리계산 함수
+		sensor_time = hcsr04_read();
+		distance  = sensor_time * .68/16;
+		return distance;
+	}
+
+	/**********************초음파센서 함수 끝***********************/
+
+
+	/**********************90도 회전 함수 시작***********************/
+
+
+	float rotate_90(void){//초음파센서 거리계산 함수
+
+		HAL_UART_Receive_IT(&huart1,&rx_data,10);
+		ysy=saveyy-270;//90도 넘어가는 yaw값
+		//				HAL_ADC_Stop(&hadc1);
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,7000-1);
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,7000-1);
+
+
+		if(saveyy>90&&saveyy<180){//2사분면
+			if(0>yy&&yy>ysy){//yy값이 90도로 회전하면 실행
+				//				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,0);
+				//				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+				//				__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,0);
+				//				__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,7000-1);
+				//				angle[2] = angle[1];
+				j=0;
+				angle[2] = angle[2] + 360 - saveyy + yy;
+
+				return main();
+
+			}
+		}
+		else{
+			if(yy>saveyy+90){//1,3,4사분면
+				//				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,0);
+				//				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,7000-1);
+				//				__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,0);
+				//				__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0);
+				//				angle[2] = angle[1];
+				j=0;
+				angle[2] = angle[2]+ yy - saveyy;
+				return main();
+			}
+		}
+
+	}
+
+
+	/**********************90도 회전 함수 끝***********************/
+
+
+	/**********************바퀴변형 함수 시작***********************/
+	uint32_t WTF(void){//바퀴변형 함수(wheeltransformation)
+
+		delay_1s();
+
+		// 앞바퀴 변형 프로세스
+
+		//앞바퀴 CW
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,7000-1);
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,7000-1);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0);
+
+
+		delay_f();
+
+		// 뒷바퀴 변형 프로세스
+
+		//앞바퀴 0
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0);
+
+
+		delay_f();
+
+		return main();
+
+	}
+
+	/**********************바퀴변형 함수 끝***********************/
+
+	//	/**********************IR센서 함수 시작***********************/
+	//	uint32_t IRsensor_CH1 (uint32_t a){//전방감지용
+	//
+	//		IRdistance_CH1= (9600/(a-20)-6);
+	//		//		IRdistance_CH1= ((9600/(a-20))-11)/4;
+	//		return IRdistance_CH1;
+	//	}
+	//
+	//	uint32_t IRsensor_CH2 (uint32_t a){//낭떠러지 감지용
+	//
+	//
+	//		IRdistance_CH2= ((9600/(a-20))-11)/4;
+	//		//		IRdistance_CH2= (9600/(a-20)-6)/30;
+	//		return IRdistance_CH2;
+	//	}
+	//
+	//	/**********************IR센서 함수 끝***********************/
+
+
+	/**********************낭떠러지 회피 함수 시작***********************/
+	float cliffback(void){
+
+
+		//초음파센서 거리계산 함수
+
+		HAL_UART_Receive_IT(&huart1,&rx_data,10);
+		ysy=saveyy-270;//90도 넘어가는 yaw값
+		//				HAL_ADC_Stop(&hadc1);
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,7000-1);
+
+		if(saveyy>90&&saveyy<180){//2사분면
+			if(0>yy&&yy>ysy){//yy값이 90도로 회전하면 실행
+				j=0;
+				angle[2] = angle[2] + 360 - saveyy + yy;
+
+				return main();
+
+			}
+		}
+		else{
+			if(yy>saveyy+90){//1,3,4사분면
+				j=0;
+				angle[2] = angle[2]+ yy - saveyy;
+				return main();
+			}
+		}
+
+
+
+
+
+
+	}
+
+	/**********************낭떠러지 회피 함수 끝***********************/
+
+
+	//	/**********************IR센서 함수 시작***********************/
+	//	uint32_t IRsensor_CH1 (uint32_t a){//전방감지용
+	//
+	//		IRdistance_CH1= (9600/(a-20)-6);
+	//		//		IRdistance_CH1= ((9600/(a-20))-11)/4;
+	//		return IRdistance_CH1;
+	//	}
+	//
+	//	uint32_t IRsensor_CH2 (uint32_t a){//낭떠러지 감지용
+	//
+	//
+	//		IRdistance_CH2= ((9600/(a-20))-11)/4;
+	//		//		IRdistance_CH2= (9600/(a-20)-6)/30;
+	//		return IRdistance_CH2;
+	//	}
+	//
+	//	/**********************IR센서 함수 끝***********************/
+
+	/**********************PID 함수 시작***********************/
+
+	void PID_Control()
+	{
+		//		HAL_UART_Receive_IT(&huart1,&rx_data,10);
+		error_Yaw = aim_Yaw - yy;
+		error_sum += error_Yaw * dt;
+		P_Yaw = Kp * error_Yaw;
+		I_Yaw = Ki * error_sum;
+		D_Yaw = Kd * ((error_Yaw - error_prev_Yaw)/dt);
+		//				error_prev_Yaw = error_Yaw;
+		PID_Yaw = P_Yaw + I_Yaw + D_Yaw;
+
+		if(savepid > PID_Yaw){
+			R_Speed = (savepid - PID_Yaw)/1.3;////1.2
+			L_Speed = 0;
+			error_prev_Yaw = error_Yaw;
+		}
+		else{
+			R_Speed = 0;
+			L_Speed = (PID_Yaw - savepid)/1.3;//1.2
+			error_prev_Yaw = error_Yaw;
+		}
+
+	}
+	/**********************PID 함수 끝***********************/
+
+	void move(void){
+
+		HAL_UART_Receive_IT(&huart1,&rx_data,10);
+		//		PID_Control();
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,7000+R_Speed-1);//R
+		__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,7000+L_Speed-1);//L  //PD12
+		__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0); //PD15
+
+	}
+
+
+
+	uint32_t encoder_val1(void){//encoder 바퀴값
+		HAL_TIM_Encoder_Start(&htim8, TIM_CHANNEL_ALL);  // Encoder 기능 시작
+		HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);  // Encoder 기능 시작
+		enc_counter_R = TIM8->CNT;
+		enc_counter_L = TIM2->CNT;
+		Direction_R = __HAL_TIM_IS_TIM_COUNTING_DOWN(&htim8);
+		Direction_L = __HAL_TIM_IS_TIM_COUNTING_DOWN(&htim2);
+		//		encoder_val = ((enc_counter_L + enc_counter_R)/2) - ((enc_counter_L0 + enc_counter_R0)/2);
+		encoder_val = (enc_counter_L - enc_counter_L0);
+		return encoder_val;
+	}
+
+
+
+	uint32_t distance1(void){//거리측정함수
+
+		distance_enc = 0.00603*encoder_val1();//--> 여기에 aim_Yaw - yy 값을
+		return distance_enc;
+	}
+
+	//		/**********************buzzer 함수 시작***********************/
+	//			void Buzzer(void){
+	//
+	//				HAL_TIM_PWM_Start(&htim9, TIM_CHANNEL_1);//tim9 channel1 on
+	//
+	//				while(1){
+	//					TIM9 -> ARR = 4403;
+	//					HAL_Delay(500);
+	//					TIM9 -> ARR = 2202;
+	//					HAL_Delay(500);
+	//					TIM9 -> CCR1 = TIM9 -> ARR /2 ;
+	//				}
+	//			}
+	//
+	//			void battery_discharge(void){
+	//				if(HAL_GPIO_ReadPin(GPIOD,GPIO_PIN_7)==0){
+	//
+	//					Buzzer();
+	//					// (+ 수동조작코드)
+	//				}
+	//			}
+	//
+	//			/**********************buzzer 함수 끝***********************/
+
+	//	delay_f();//3초 딜레이.
+	//	XY();
+	/* USER CODE END 2 */
+
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
+	while (1)
+	{
+		HAL_UART_Receive_IT(&huart1,&rx_data,10);//imusensor data uart reveive
+		HAL_UART_Receive_IT(&huart2,&rx_data2, 1);//imusensor data uart reveive
+		//		printf("%f\n", X);
+
+		if(automaticFlg == 1){
+
+			//앞바퀴시작
+			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+
+			HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+			HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+			distancefunction();
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);//GREEN LED ON
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);//RED LED ON
+
+
+
+			//			//앞바퀴시작
+			//			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//tim3 channel1 on
+			//			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);//tim3 channel4 on
+			//
+			//			HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);//tim4 channel1 on
+			//			HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);//tim4 channel4 on
+
+
+
+			/***************************주행코드**********************************************/
+
+			//			move();
+			__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,7000+R_Speed-1);//R
+			__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_4,0);
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_1,7000+L_Speed-1);//L  //PD12
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0); //PD15
+			Pinstat = HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_1);
+
+			/*******************************************************************************/
+
+			HAL_Delay(20);
+
+			//			HAL_ADC_Start(&hadc1);
+			//			HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcVal[0], 2);//adc 채널1 dma 시작
+			//						HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adcVal[1], 2);//adc 채널2 dma 시작
+			IRsensor_CH1(adcVal[0]);
+			IRsensor_CH2(adcVal[1]);
+
+			if(Pinstat){
+
+				aim_Yaw = yy;
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+			}
+
+			if (i < 5){
+				HAL_Delay(100);
+
+				savepid = (int)PID_Yaw;
+				i++;
+			}
+
+
+			encoder_val1();
+			distance1();
+			//			PID_Control();
+			enc_counter_L = TIM8->CNT;
+			enc_counter_R = TIM2->CNT;
+			Direction_L = __HAL_TIM_IS_TIM_COUNTING_DOWN(&htim8);
+			Direction_R = __HAL_TIM_IS_TIM_COUNTING_DOWN(&htim2);
+
+			saveyy=yy;//distance<18이 되기직전의 yaw값 saveyy에 저장
+
+
+			while(distance<13){//초음파센서
+
+				//				printf("%f\n", X);
+
+				if(IRdistance_CH1 < 18){//IR거리센서
+					t = 1;
+					j++;
+					if(j==1){//좌표 전송 코드
+						printf("( %f", X);
+						printf(", %f )\n", Y);
+
+					}
+
+					location[1] = location[0];//회전 직전까지 움직인 거리값 location[1]에 저장
+					rotate_90();//장애물 90도 회전 함수
+					cal = angle[2];//ang(0) - ang(1) 값 저장
+					//					HAL_GPIO_WritePin(GPIOD, GPIO_PIN_0, GPIO_PIN_RESET);// 바퀴변형 출력 LOW신호
+
+				}
+				else{
+
+					WTF();//바퀴변형 함수
+					//계단 주행시 적외선 거리센서 모두 꺼야할듯
+				}
+
+			}
+
+			while(IRdistance_CH2 > 40){//낭떠러지 감지
+				j++;
+				if(j==1){//좌표 전송 코드
+					printf("( %f", X);
+					printf(", %f )\n", Y);
+				}
+
+				cliffback();
+
+				location[1] = location[0];//회전 직전까지 움직인 거리값 location[1]에 저장
+				cal = angle[2];//ang(0) - ang(1) 값 저장
+
+
+				//PD1 인터럽트 알고리즘 작성하기
+
+			}
+		}
+
+
+		/* USER CODE END WHILE */
+
+		/* USER CODE BEGIN 3 */
+	}
+
+	/* USER CODE END 3 */
+}
+
+/**
+ * @brief System Clock Configuration
+ * @retval None
+ */
+void SystemClock_Config(void)
+{
+	RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+	RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+	/** Configure the main internal regulator output voltage
+	 */
+	__HAL_RCC_PWR_CLK_ENABLE();
+	__HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+	/** Initializes the CPU, AHB and APB busses clocks
+	 */
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+	RCC_OscInitStruct.PLL.PLLM = 8;
+	RCC_OscInitStruct.PLL.PLLN = 168;
+	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+	RCC_OscInitStruct.PLL.PLLQ = 4;
+	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	/** Initializes the CPU, AHB and APB busses clocks
+	 */
+	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+			|RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+	{
+		Error_Handler();
+	}
+}
+
+/**
+ * @brief NVIC Configuration.
+ * @retval None
+ */
+static void MX_NVIC_Init(void)
+{
+	/* USART2_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(USART2_IRQn);
+	/* USART1_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(USART1_IRQn, 1, 0);
+	HAL_NVIC_EnableIRQ(USART1_IRQn);
+}
+
+/* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+
+	if(huart-> Instance == USART1)
+	{
+
+		EulerRoll = (rx_data[2]<<8)|rx_data[3];
+		EulerPitch = (rx_data[4]<<8)|rx_data[5];
+		EulerYaw=(rx_data[6]<<8)|rx_data[7];
+
+		Roll = EulerRoll/100.0;
+		Pitch = EulerPitch/100.0;
+		Yaw = EulerYaw/100.0;
+		//		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);//led off
+		rr = Roll;
+		yy = Yaw;
+		location[1] = distance_enc;//움직이고있는 실시간 거리값
+		XY();
+
+
+		if(rr < -0.5){
+
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+			duty += 40;
+			if(duty > 2200){
+				duty = 2200;
+
+
+			}
+		}
+
+		if(rr > 1){
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,duty);
+			duty -= 40;
+
+			if(duty < 1440){
+				duty = 1440;
+
+
+			}
+		}
+
+
+
+
+
+	}
+
+	if(huart-> Instance == USART2)// 수동조작 인터럽트
+	{
+
+
+		//		HAL_UART_Receive_IT(&huart2,&rx_data2, 1);
+		switch (rx_data2) {
+
+		case 'a'://test code
+			printf("( %f", X);
+			printf(", %f )\n", Y);
+			automaticFlg = 0;
+			break;
+
+
+		case 'C'://controller mode
+
+			automaticFlg = 0;
+			stop();
+			break;
+
+		case 'U'://uncontroller mode
+			automaticFlg = 1;
+			break;
+
+		}
+
+		if(automaticFlg == 0){//수동조작
+			switch (rx_data2) {
+			case 'W':
+				foward();
+				break;
+			case 'R':
+				right();
+				break;
+			case 'L':
+				left();
+				break;
+			case 'B':
+				back();
+				break;
+			case 'T':
+				//				transform();
+				break;
+
+			case 'S':
+				stop();
+				break;
+
+			}
+
+
+		}
+
+	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	while(GPIO_Pin == GPIO_PIN_1){
+		HAL_UART_Receive_IT(&huart1,&rx_data,10);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);//GREEN LED OFF
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);//GREEN LED OFF
+
+		HAL_Delay(100);
+
+		cliffrotate_90_2();
+
+
+	}
+
+
+	while(GPIO_Pin == GPIO_PIN_0){
+
+		NVIC_SystemReset();//reset
+	}
+
+}
+/* USER CODE END 4 */
+
+/**
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
+void Error_Handler(void)
+{
+	/* USER CODE BEGIN Error_Handler_Debug */
+	/* User can add his own implementation to report the HAL error return state */
+
+	/* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
+void assert_failed(uint8_t *file, uint32_t line)
+{ 
+	/* USER CODE BEGIN 6 */
+	/* User can add his own implementation to report the file name and line number,
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+	/* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
