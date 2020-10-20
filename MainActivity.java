@@ -8,6 +8,7 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.provider.ContactsContract;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -23,42 +24,11 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.UnknownHostException;
-
-class StoreImg extends Thread{
-    public void run(){
-        try{
-            String savePath = Environment.getExternalStorageDirectory().toString() + "/DCIM/Camera/frame.jpg";
-            for (int k = 0; k < 100; k++) {
-                BufferedInputStream[] bis = new BufferedInputStream[100];
-                bis[k] = new BufferedInputStream(MainActivity.socket.getInputStream());
-                DataInputStream dis = new DataInputStream(bis[k]);
-                int filesCount = dis.readInt();
-                //File[] files = new File[filesCount];
-                for (int i = 0; i < filesCount; i++) {
-                    long fileLength = dis.readLong();
-                    String fileName = dis.readUTF();
-                    File files = new File(savePath, fileName);
-                    FileOutputStream fos = new FileOutputStream(files);
-                    BufferedOutputStream bos = new BufferedOutputStream(fos);
-                    for (int j = 0; j < fileLength; j++)
-                        bos.write(bis[k].read());
-                    bos.flush();
-                    //bis[k].close();
-                }
-
-            }
-            // dis.close();
-        }catch(IOException e){
-            e.printStackTrace();
-        }
-    }
-}
-
-
 
 
 public class MainActivity extends AppCompatActivity {
@@ -68,6 +38,7 @@ public class MainActivity extends AppCompatActivity {
     static PrintWriter out;
     static BufferedInputStream bis;
     static DataInputStream dis;
+    static String msg;
     final String savepath = Environment.getExternalStorageDirectory().getAbsolutePath();
     //final File face = new File(savepath + "/face")
     private EditText edtTextAddress;
@@ -92,7 +63,7 @@ public class MainActivity extends AppCompatActivity {
     Button takelocation;
 
 
-    String msg;
+
 
 
     public void forward() {
@@ -115,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void right() {
         //Toast.makeText(getApplicationContext(), "Go Forward", Toast.LENGTH_SHORT).show();
-        String data = "A"; //글자입력칸에 있는 글자를 String 형태로 받아서 data에 저장
+        String data = "D"; //글자입력칸에 있는 글자를 String 형태로 받아서 data에 저장
         Log.w("NETWORK", " " + data);
         if (data != null) { //만약 데이타가 아무것도 입력된 것이 아니라면
             MainActivity.out.println(data); //data를 stream 형태로 변형하여 전송
@@ -158,42 +129,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void storeimg() {
+    public void storeimg()  {
         //Toast.makeText(getApplicationContext(), "Go Forward", Toast.LENGTH_SHORT).show();
         String data = "I"; //글자입력칸에 있는 글자를 String 형태로 받아서 data에 저장
         Log.w("NETWORK", " " + data);
         if (data != null) { //만약 데이타가 아무것도 입력된 것이 아니라면
             MainActivity.out.println(data); //data를 stream 형태로 변형하여 전송
         }
-        try{
-            String savePath = Environment.getExternalStorageDirectory().getAbsolutePath()+ "/face";
-            int filesCount = MainActivity.dis.readInt();
-            //File[] files = new File[filesCount];
-            for (int i = 0; i < filesCount; i++) {
-                long fileLength = MainActivity.dis.readLong();
-                String fileName = MainActivity.dis.readUTF();
-                File files = new File(savePath, fileName);
-                FileOutputStream fos = new FileOutputStream(files);
-                BufferedOutputStream bos = new BufferedOutputStream(fos);
-                for (int j = 0; j < fileLength; j++)
-                    bos.write(bis.read());
-                bos.flush();
-                //bis[k].close();
-            }
-            // dis.close();
-        }catch(IOException e){
-            e.printStackTrace();
-        }
+
     }
 
     public void takelocation() {
-        //Toast.makeText(getApplicationContext(), "Go Forward", Toast.LENGTH_SHORT).show();
         String data = "T"; //글자입력칸에 있는 글자를 String 형태로 받아서 data에 저장
         Log.w("NETWORK", " " + data);
         if (data != null) { //만약 데이타가 아무것도 입력된 것이 아니라면
             MainActivity.out.println(data); //data를 stream 형태로 변형하여 전송
         }
     }
+
 
     public void exit() {
         //Toast.makeText(getApplicationContext(), "Go Forward", Toast.LENGTH_SHORT).show();
@@ -232,24 +185,30 @@ public class MainActivity extends AppCompatActivity {
         storeimg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { //버튼이 클릭되면
-                new Thread(new Runnable(){
+                new Thread(new Runnable() {
                     @Override
-                    public void run(){
+                    public void run() {
                         storeimg();
+                        try {
+                            String savePath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/face";
+                            int filesCount = dis.readInt();
+                            File[] files = new File[filesCount];
+                            for (int i = 0; i < filesCount; i++) {
+                                long fileLength = dis.readLong();
+                                String fileName = dis.readUTF();
+                                files[i] = new File(savePath, fileName);
+                                FileOutputStream fos = new FileOutputStream(files[i]);
+                                BufferedOutputStream bos = new BufferedOutputStream(fos);
+                                for (int j = 0; j < fileLength; j++)
+                                    bos.write(bis.read());
+                                bos.flush();
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
                     }
                 }).start();
             }
-
-            /*public void onClick(View v) {
-                Toast.makeText(getApplicationContext(), "Store Image", Toast.LENGTH_SHORT).show();
-                String data = "I"; //글자입력칸에 있는 글자를 String 형태로 받아서 data에 저장
-                Log.w("NETWORK", " " + data);
-                if (data != null) { //만약 데이타가 아무것도 입력된 것이 아니라면
-                    out.println(data); //data를 stream 형태로 변형하여 전송
-                }
-                Thread image = new StoreImg();
-                image.start();
-            }*/
         });
 
         showimg.setOnClickListener(new View.OnClickListener() {
@@ -368,78 +327,82 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        connect.setOnClickListener(buttonConnectOnClickListener);
+        connect.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                ConnectThread thread = new ConnectThread();
+                thread.start();
+            }
+        });
+
+        //connect.setOnClickListener(buttonConnectOnClickListener);
     }
 
-
-
-
-
-    View.OnClickListener buttonConnectOnClickListener = new View.OnClickListener(){
-        public void onClick(View arg0){
-            NetworkTask myClientTask = new NetworkTask(edtTextAddress.getText().toString(), 6666);
-            myClientTask.execute();
-        }
-    };
-
-    public class NetworkTask extends AsyncTask<Void, Void, Void>{
-        String dstAddress;
-        int dstPort;
-
-        NetworkTask(String addr, int port){
-            dstAddress = addr;
-            dstPort = port;
-        }
-
-        @Override
-        protected Void doInBackground(Void... arg0){
+    class ConnectThread extends Thread{
+        public void run(){
             try{
-                Socket socket = new Socket(dstAddress, dstPort);
+                int port = 6666;
+                socket = new Socket("192.168.43.6", port);
                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 out = new PrintWriter(socket.getOutputStream(), true);
                 bis = new BufferedInputStream(socket.getInputStream());
                 dis = new DataInputStream(bis);
-                msg = in.readLine();
-            }catch(UnknownHostException e){
-                e.printStackTrace();
-            }catch(IOException e){
-                e.printStackTrace();
-            }
-            return null;
-        }
-        @Override
-        protected void onPostExecute(Void result){
-            try{
-                while (true) {
-                    if (msg.contains("signal")) {
-                        signal.post(new Runnable() {
-                            public void run() {
-                                signal.setText(msg);
-                                new Handler().postDelayed(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        signal.setText("");
-                                    }
-                                }, 3000);
-                            }
-                        });
-                    } else if (msg.contains("location")) {
-                        location.post(new Runnable() {
-                            public void run() {
-                                location.setText(msg);
-                            }
-                        });
+                //msg = in.readLine();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        MessageThread thread = new MessageThread();
+                        thread.start();
                     }
-                    Thread.sleep(300);
-                }
-            }catch(InterruptedException e){
+                });
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
                 e.printStackTrace();
             }
-            super.onPostExecute(result);
         }
     }
 
+    class MessageThread extends Thread{
 
+
+        @Override
+        public void run(){
+            try{
+                while(true){
+                    msg = in.readLine();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (msg.contains("location")) {
+                                location.post(new Runnable(){
+                                    public void run() {
+                                        location.setText(msg);
+                                    }
+                                });
+                            }else if(msg.contains("signal")){
+                                signal.post(new Runnable(){
+                                    public void run(){
+                                        signal.setText(msg);
+                                        new Handler().postDelayed(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                signal.setText("");
+                                            }
+                                        }, 3000);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                    Thread.sleep(3000);
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+        }
+    }
+    
     @Override
     protected void onStop() {
         super.onStop();
