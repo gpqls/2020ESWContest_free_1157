@@ -42,7 +42,7 @@ public class NewFile implements Runnable{
 						sout = comPort.getOutputStream();
 						String signal = "signal";
 						out.println(signal); 
-						sout.write(97);
+						sout.write(84);
 						System.out.println("New File");
 					}catch(IOException e) {
 						e.printStackTrace();
