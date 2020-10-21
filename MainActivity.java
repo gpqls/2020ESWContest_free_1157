@@ -34,13 +34,10 @@ import java.net.UnknownHostException;
 public class MainActivity extends AppCompatActivity {
     static Socket socket;
     static BufferedReader in;
-    static BufferedReader in2;
     static PrintWriter out;
     static BufferedInputStream bis;
     static DataInputStream dis;
     static String msg;
-    final String savepath = Environment.getExternalStorageDirectory().getAbsolutePath();
-    //final File face = new File(savepath + "/face")
     private EditText edtTextAddress;
     private static Handler mHandler;
 
@@ -185,29 +182,14 @@ public class MainActivity extends AppCompatActivity {
         storeimg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) { //버튼이 클릭되면
-                new Thread(new Runnable() {
+                new Thread(new Runnable(){
                     @Override
-                    public void run() {
+                    public void run(){
                         storeimg();
-                        try {
-                            String savePath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/face";
-                            int filesCount = dis.readInt();
-                            File[] files = new File[filesCount];
-                            for (int i = 0; i < filesCount; i++) {
-                                long fileLength = dis.readLong();
-                                String fileName = dis.readUTF();
-                                files[i] = new File(savePath, fileName);
-                                FileOutputStream fos = new FileOutputStream(files[i]);
-                                BufferedOutputStream bos = new BufferedOutputStream(fos);
-                                for (int j = 0; j < fileLength; j++)
-                                    bos.write(bis.read());
-                                bos.flush();
-                            }
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
                     }
                 }).start();
+                RestoreImage Thread2 = new RestoreImage();
+                Thread2.start();
             }
         });
 
@@ -335,7 +317,12 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        //connect.setOnClickListener(buttonConnectOnClickListener);
+    }
+
+    class StoreImage extends Thread{
+        public void run(){
+
+        }
     }
 
     class ConnectThread extends Thread{
@@ -347,7 +334,6 @@ public class MainActivity extends AppCompatActivity {
                 out = new PrintWriter(socket.getOutputStream(), true);
                 bis = new BufferedInputStream(socket.getInputStream());
                 dis = new DataInputStream(bis);
-                //msg = in.readLine();
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -364,8 +350,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     class MessageThread extends Thread{
-
-
         @Override
         public void run(){
             try{
@@ -402,7 +386,29 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-    
+
+    class RestoreImage extends Thread{
+        @Override
+        public void run(){
+            try{
+                String savePath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/face";
+                int filesCount = dis.readInt();
+                for (int i = 0; i < filesCount; i++) {
+                    long fileLength = dis.readLong();
+                    String fileName = dis.readUTF();
+                    File files = new File(savePath, fileName);
+                    FileOutputStream fos = new FileOutputStream(files);
+                    BufferedOutputStream bos = new BufferedOutputStream(fos);
+                    for (int j = 0; j < fileLength; j++)
+                        bos.write(bis.read());
+                    bos.flush();
+                }
+            }catch(IOException e){
+                e.printStackTrace();
+            }
+        }
+    }
+
     @Override
     protected void onStop() {
         super.onStop();
