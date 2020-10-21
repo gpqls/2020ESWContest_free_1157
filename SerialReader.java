@@ -22,7 +22,7 @@ public class SerialReader implements Runnable {
 		int len = -1;
 		try {
 			while((len=this.in.read(buf)) > -1) {
-				OutputStream output = new FileOutputStream("C:\\Users\\Jaemin\\Desktop\\hyebin2\\location.txt");
+				OutputStream output = new FileOutputStream("/home/hyebin/location/location.txt");
 				String location = new String(buf, 0, len);
 				byte[] by = location.getBytes();
 				System.out.println(location);
@@ -33,3 +33,4 @@ public class SerialReader implements Runnable {
 		}
 	}
 }
+
